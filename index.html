@@ -598,7 +598,7 @@ function renderHome() {
   content().innerHTML = `
     <div class="cards">${cards}</div>
     <div class="quick-title">Срочная помощь — 5 минут</div>
-    <div class="materials-note" style="margin-top:0;">Короткие практики, когда нужно быстро успокоиться, очиститься после тяжёлой встречи или собраться.</div>
+    <div class="materials-note" style="margin-top:0;">Короткие практики, когда нужно быстро успокоиться, очиститься после тяжёлой встречи или собраться. Открываются вместе с доступом к разделу.</div>
     <div class="quick-row" style="margin-top:14px;">${quick}</div>`;
 }
 
@@ -630,8 +630,7 @@ function stepsTotal(p) { return p.steps.reduce((a, s) => a + (s.s || 0), 0); }
 function openPractice(id, fromProgram) {
   const p = PRACTICE[id];
   if (!p) return;
-  const quick = window.ENERGY_QUICK.includes(id);
-  if (!quick && !fromProgram && !can("practices", p.dir)) { showWelcome(false); content().innerHTML = lockedHtml(p.title); return; }
+  if (!fromProgram && !can("practices", p.dir)) { showWelcome(false); content().innerHTML = lockedHtml(p.title); return; }
   stopPlayer();
   showWelcome(false);
   window.scrollTo(0, 0);
@@ -1098,15 +1097,24 @@ async function loadUsers() {
     </div>` : ""}
     <div class="table-card">
       <div class="table-title">${ME.isAdmin ? "Все пользователи" : "Мои ученики"} (${(users || []).length})</div>
-      ${(users || []).length ? `<table class="data-table"><thead><tr><th>Имя</th><th>Email</th><th>Телефон</th><th>Роль</th><th>Доступ</th><th></th></tr></thead><tbody>
+      ${(users || []).length ? `<table class="data-table"><thead><tr><th>Имя</th><th>Email</th><th>Телефон</th><th>Почта</th><th>Роль</th><th>Доступ</th><th></th></tr></thead><tbody>
         ${(users || []).map(u => {
           const p = lastActive[u.id];
           return `<tr><td>${nameOf(u)}</td><td>${esc(u.email || "")}</td><td>${esc(u.phone || "")}</td>
+            <td>${u.email_confirmed ? `<span class="status-ok">подтверждена</span>` : `<span class="status-off">не подтверждена</span>${ME.isAdmin ? `<br><button class="auth-link" style="background:none;border:none;color:#f6d66c !important;cursor:pointer;padding:0;font-size:13px;" onclick="confirmEmail('${u.id}')">Подтвердить вручную</button>` : ""}`}</td>
             <td>${ADMIN_EMAILS.includes(String(u.email || "").toLowerCase()) ? "Администратор" : u.energy_role === "practitioner" ? "Практик" : "Ученик"}</td>
             <td>${p ? `<span class="status-ok">${p.is_unlimited || !p.ends_at ? "бессрочно" : "до " + fmtDate(p.ends_at)}</span>` : `<span class="status-off">нет</span>`}</td>
             <td><button class="auth-link" style="background:none;border:none;color:#f6d66c !important;cursor:pointer;" onclick="pickUser('${u.id}')">Выбрать</button></td></tr>`;
-        }).join("")}</tbody></table>` : `<div class="empty-table">${ME.isAdmin ? "Пользователей пока нет." : "Пока нет учеников. Дайте им свой код практика."}</div>`}
+        }).join("")}</tbody></table>` : `<div class="empty-table">${ME.isAdmin ? "На энергоплатформе пока никто не зарегистрировался." : "Пока нет учеников. Дайте им свой код практика."}</div>`}
     </div>`;
+}
+async function confirmEmail(id) {
+  const u = (window._users || {})[id];
+  if (!await confirmBox(`Подтвердить почту ${u ? u.email : ""} вручную? Делайте это, только если письмо до человека не дошло.`)) return;
+  const { data, error } = await sb.rpc("energy_admin_confirm_email", { p_user: id });
+  if (error || data !== "ok") { alertBox("Не удалось подтвердить: " + (error ? error.message : data)); return; }
+  await loadUsers();
+  alertBox("Почта подтверждена. Теперь человек может войти со своим email и паролем.");
 }
 function filterUserSelect() {
   const q = $("userSearch").value.trim().toLowerCase();
@@ -1224,7 +1232,12 @@ async function loginUser() {
   const email = ($("loginEmail").value || "").trim().toLowerCase(), password = $("loginPassword").value || "", err = $("loginError");
   if (!email || !password) { err.textContent = "Введите email и пароль."; return; }
   const { error } = await sb.auth.signInWithPassword({ email, password });
-  if (error) { err.textContent = "Неверный email или пароль."; return; }
+  if (error) {
+    err.textContent = /confirm/i.test(error.message || "")
+      ? "Почта ещё не подтверждена. Откройте письмо со ссылкой подтверждения (проверьте папку «Спам»). Если письма нет — напишите администратору."
+      : "Неверный email или пароль.";
+    return;
+  }
   touch(); location.reload();
 }
 function formatPhone(el) { const d = el.value.replace(/\D/g, "").slice(0, 15); el.value = d ? "+" + d : ""; }
@@ -1271,7 +1284,7 @@ async function registerUser() {
     set("Регистрация завершена. Сейчас откроется платформа.", true);
     setTimeout(() => location.reload(), 900);
   } else {
-    set("Аккаунт создан. Подтвердите email по ссылке из письма и войдите.", true);
+    set("Аккаунт создан. На вашу почту отправлено письмо со ссылкой подтверждения — откройте его (проверьте и «Спам»), затем войдите со своим email и паролем. Доступ к разделам откроет администратор.", true);
   }
 }
 function showForgot() {
@@ -1327,7 +1340,7 @@ async function logoutUser() {
    ============================================================ */
 async function ensureMember() {
   const { data: { user } } = await sb.auth.getUser();
-  if (!user) return;
+  if (!user || ADMIN_EMAILS.includes(String(user.email || "").toLowerCase())) return;
   const { data: m } = await sb.from("energy_members").select("profile_id").eq("profile_id", user.id).maybeSingle();
   if (!m) await sb.from("energy_members").insert({ profile_id: user.id, energy_role: "student" });
   const code = localStorage.getItem("energy_pending_code");
