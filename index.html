@@ -481,16 +481,15 @@ body, body * { font-variant-numeric: lining-nums; }
 </div>
 
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
-<script src="practices-data.js?v=1"></script>
+<script src="practices-data.js?v=2"></script>
 <script>
 /* ============================================================
    ENERGY PLATFORM — основной код
-   Аккаунты и профили общие с Numerology Platform (тот же Supabase).
-   Доступы, библиотека, дневник, программы — таблицы energy_*.
+   Самостоятельная платформа: собственный проект Supabase «Energy Platform».
    ============================================================ */
 
-const SUPABASE_URL = "https://skvprhqsxnlacshucncq.supabase.co";
-const SUPABASE_KEY = "sb_publishable_N0pKMmzNOonoInimmkding_GJnMwsRd";
+const SUPABASE_URL = "https://shoaqhkkbnpppunpfknt.supabase.co";
+const SUPABASE_KEY = "sb_publishable_7lXOeWjzBULFY8QYoA9YsQ_ong81xmm";
 const sb = supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
 
 const ADMIN_EMAILS = ["centernumero@gmail.com"];
@@ -1270,7 +1269,7 @@ async function registerUser() {
   if (code && !/^[0-9A-F]{8}$/.test(code)) return set("Код практика — 8 символов (цифры и буквы A–F).");
   set("Создаю аккаунт…", true);
   const { data, error } = await sb.auth.signUp({ email, password: p1, options: {
-    data: { first_name: first, last_name: last, middle_name: middle, phone, role: "student", status: "pending", source: "energy" },
+    data: { first_name: first, last_name: last, middle_name: middle, phone },
     emailRedirectTo: location.origin + location.pathname } });
   if (error) {
     if (/already|registered|exists/i.test(error.message)) return set("Этот email уже зарегистрирован. Войдите со своим email и паролем.");
@@ -1352,13 +1351,13 @@ async function loadMe() {
   ME.user = session.user;
   const email = String(ME.user.email || "").toLowerCase();
   const [{ data: profile }, { data: member }, { data: periods }] = await Promise.all([
-    sb.from("profiles").select("role, first_name, last_name, email").eq("id", ME.user.id).maybeSingle(),
+    sb.from("profiles").select("first_name, last_name, email").eq("id", ME.user.id).maybeSingle(),
     sb.from("energy_members").select("*").eq("profile_id", ME.user.id).maybeSingle(),
     sb.from("energy_access_periods").select("*").eq("profile_id", ME.user.id).order("created_at", { ascending: false })
   ]);
   ME.profile = profile;
   ME.member = member;
-  ME.isAdmin = ADMIN_EMAILS.includes(email) || (profile && profile.role === "admin");
+  ME.isAdmin = ADMIN_EMAILS.includes(email) || !!(member && member.energy_role === "admin");
   ME.isPractitioner = !!(member && member.energy_role === "practitioner");
   const active = (periods || []).filter(periodActive);
   ME.period = active[0] || null;
