@@ -1239,6 +1239,14 @@ async function loginUser() {
   }
   touch(); location.reload();
 }
+function ruError(m) {
+  m = String(m || "");
+  if (/invalid format|validate email/i.test(m)) return "Проверьте email: адрес указан неверно.";
+  if (/rate limit|too many|security purposes/i.test(m)) return "Слишком много попыток. Подождите несколько минут и попробуйте снова.";
+  if (/password/i.test(m)) return "Пароль не подходит: минимум 6 символов.";
+  if (/network|fetch/i.test(m)) return "Нет связи с сервером. Проверьте интернет и попробуйте снова.";
+  return "Не удалось выполнить действие. Попробуйте ещё раз.";
+}
 function formatPhone(el) { const d = el.value.replace(/\D/g, "").slice(0, 15); el.value = d ? "+" + d : ""; }
 function showRegister(message) {
   authShell(`<h2>Регистрация</h2>
@@ -1256,14 +1264,14 @@ function showRegister(message) {
 }
 async function registerUser() {
   const v = id => ($(id).value || "").trim();
-  const last = v("rLast"), first = v("rFirst"), middle = v("rMiddle"), phone = v("rPhone"), email = v("rEmail").toLowerCase(), code = v("rCode").toUpperCase();
+  const last = v("rLast"), first = v("rFirst"), middle = v("rMiddle"), phone = v("rPhone"), email = v("rEmail").toLowerCase().replace(/[\s,;]+$/g, ""), code = v("rCode").toUpperCase();
   const p1 = $("rPass").value || "", p2 = $("rPass2").value || "", msg = $("rMsg");
   const set = (t, ok) => { msg.textContent = t; msg.className = "auth-message " + (ok ? "success" : "error"); };
   const nameRe = /^[A-Za-zА-Яа-яЁёӘәҒғҚқҢңӨөҰұҮүҺһІі' -]{2,}$/;
   if (!last || !first || !phone || !email || !p1) return set("Заполните обязательные поля: фамилия, имя, телефон, email и пароль.");
   if (!nameRe.test(last) || !nameRe.test(first) || (middle && !nameRe.test(middle))) return set("Проверьте ФИО — только буквы, не менее 2 символов.");
   if (!/^\+\d{8,15}$/.test(phone)) return set("Проверьте телефон: + код страны и номер, например +77001234567.");
-  if (!/^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/.test(email)) return set("Проверьте email.");
+  if (!/^[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}$/.test(email)) return set("Проверьте email: в адресе не должно быть пробелов, запятых и других лишних символов. Пример: anna@mail.ru");
   if (p1.length < 6) return set("Пароль — минимум 6 символов.");
   if (p1 !== p2) return set("Пароли не совпадают.");
   if (code && !/^[0-9A-F]{8}$/.test(code)) return set("Код практика — 8 символов (цифры и буквы A–F).");
@@ -1273,7 +1281,7 @@ async function registerUser() {
     emailRedirectTo: location.origin + location.pathname } });
   if (error) {
     if (/already|registered|exists/i.test(error.message)) return set("Этот email уже зарегистрирован. Войдите со своим email и паролем.");
-    return set(error.message || "Не удалось зарегистрироваться.");
+    return set(ruError(error.message));
   }
   if (data && data.user && Array.isArray(data.user.identities) && data.user.identities.length === 0)
     return set("Этот email уже зарегистрирован. Войдите со своим email и паролем.");
@@ -1297,7 +1305,7 @@ async function sendReset() {
   const email = ($("fEmail").value || "").trim().toLowerCase(), m = $("fMsg");
   if (!email) { m.textContent = "Введите email."; m.className = "auth-message error"; return; }
   const { error } = await sb.auth.resetPasswordForEmail(email, { redirectTo: location.origin + location.pathname });
-  m.textContent = error ? (error.message || "Не удалось отправить письмо.") : "Ссылка для восстановления отправлена на почту.";
+  m.textContent = error ? ruError(error.message) : "Ссылка для восстановления отправлена на почту.";
   m.className = "auth-message " + (error ? "error" : "success");
 }
 function showNewPassword() {
@@ -1310,7 +1318,7 @@ async function saveNewPassword() {
   if (a.length < 6) { m.textContent = "Минимум 6 символов."; return; }
   if (a !== b) { m.textContent = "Пароли не совпадают."; return; }
   const { error } = await sb.auth.updateUser({ password: a });
-  if (error) { m.textContent = "Ошибка: " + error.message; return; }
+  if (error) { m.textContent = ruError(error.message); return; }
   m.className = "auth-message success"; m.textContent = "Пароль изменён.";
   history.replaceState(null, "", location.pathname);
   setTimeout(() => location.reload(), 900);
